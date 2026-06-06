@@ -95,10 +95,19 @@ const server = http.createServer((req, res) => {
       return;
     }
     const data = payload?.data || {};
-    if (data.is_from_me) return; // never react to our own messages
     const text = (data.text || "").trim();
-    if (PREFIX && !text.startsWith(PREFIX)) return; // gate
-    const userText = (PREFIX ? text.slice(PREFIX.length) : text).trim();
+    const hasPrefix = !!PREFIX && text.startsWith(PREFIX);
+
+    // Loop-safety: the bot's own replies are also is_from_me. Only act on our
+    // own messages when they're explicit "@prefix" commands (the bot never
+    // prefixes its replies, so it can't trigger itself). With no prefix set,
+    // ignore our own messages entirely.
+    if (data.is_from_me && !hasPrefix) return;
+
+    // Trigger gate: when a prefix is configured, the message must start with it.
+    if (PREFIX && !hasPrefix) return;
+
+    const userText = (hasPrefix ? text.slice(PREFIX.length) : text).trim();
     if (!userText) return;
 
     if (busy) {
