@@ -890,6 +890,17 @@ func (m *MCPServer) handleMediaResource(ctx context.Context, req mcp.ReadResourc
 		return nil, errors.New("invalid message id")
 	}
 
+	// enforce chat scope: media belongs to the chat of its message
+	if len(m.allowedSet) > 0 {
+		msg, err := m.store.GetMessageByID(messageID)
+		if err != nil || msg == nil {
+			return nil, fmt.Errorf("message not found: %s", messageID)
+		}
+		if !m.isChatAllowed(msg.ChatJID) {
+			return nil, errors.New(chatScopeError(msg.ChatJID))
+		}
+	}
+
 	// get media metadata
 	meta, err := m.mediaStore.GetMediaMetadata(messageID)
 	if err != nil || meta == nil {

@@ -4,6 +4,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // GetEnv gets an environment variable with a fallback default value.
@@ -38,6 +39,25 @@ func GetEnvInt(key string, defaultVal int) int {
 		return defaultVal
 	}
 	return i
+}
+
+// GetEnvStringSlice gets a comma-separated environment variable as a slice.
+// Entries are trimmed of whitespace and empty entries are dropped.
+// It returns nil if the variable is unset or contains no entries.
+func GetEnvStringSlice(key string) []string {
+	val := os.Getenv(key)
+	if val == "" {
+		return nil
+	}
+
+	var result []string
+	for _, entry := range strings.Split(val, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry != "" {
+			result = append(result, entry)
+		}
+	}
+	return result
 }
 
 // GetEnvInt64 gets an int64 environment variable with a fallback default value.

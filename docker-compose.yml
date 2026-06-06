@@ -2,11 +2,16 @@ services:
   whatsapp-mcp:
     build: .
     container_name: whatsapp-mcp
+    # Bind only to localhost — the server fronts your WhatsApp account and must
+    # not be reachable from other devices on the network.
     ports:
-      - '${MCP_PORT:-8080}:8080'
+      - '127.0.0.1:${MCP_PORT:-8080}:8080'
     environment:
       - MCP_API_KEY=${MCP_API_KEY}
       - MCP_PORT=8080
+      # Restrict ALL tools, media, and webhooks to these chats (comma-separated JIDs).
+      # Leave empty on first run to discover your group's JID, then set it. See README.
+      - ALLOWED_CHAT_JIDS=${ALLOWED_CHAT_JIDS:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - TIMEZONE=${TIMEZONE:-UTC}
       - MEDIA_AUTO_DOWNLOAD_ENABLED=${MEDIA_AUTO_DOWNLOAD_ENABLED:-true}
@@ -14,9 +19,25 @@ services:
       - MEDIA_AUTO_DOWNLOAD_MAX_SIZE_MB=${MEDIA_AUTO_DOWNLOAD_MAX_SIZE_MB:-10}
       - MEDIA_AUTO_DOWNLOAD_TYPES=${MEDIA_AUTO_DOWNLOAD_TYPES:-image,audio,sticker}
     volumes:
-      # persist WhatsApp session and message database
+      # Persist WhatsApp session, message database, media, logs, and qr.png.
       - ./data:/app/data
     restart: unless-stopped
+
+    # --- Sandbox hardening (defense-in-depth) ---
+    # Root filesystem is read-only; only the data volume and /tmp are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    # Drop all Linux capabilities — the server needs none of them.
+    cap_drop:
+      - ALL
+    # Prevent privilege escalation (setuid binaries, etc.).
+    security_opt:
+      - no-new-privileges:true
+    # Resource caps so a runaway loop can't exhaust the host.
+    pids_limit: 256
+    mem_limit: 512m
+
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8080/health']
       interval: 30s

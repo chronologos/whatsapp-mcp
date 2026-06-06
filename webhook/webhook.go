@@ -128,6 +128,11 @@ func (m *WebhookManager) Stop() {
 
 // EmitMessageEvent emits a message event to all registered webhooks.
 func (m *WebhookManager) EmitMessageEvent(msg storage.MessageWithNames) error {
+	// enforce chat scope: only emit events for allowed chats
+	if len(m.config.AllowedChatJIDs) > 0 && !m.config.AllowedChatJIDs[msg.ChatJID] {
+		return nil
+	}
+
 	webhooks, err := m.store.ListWebhooks(true) // active only
 	if err != nil {
 		return err

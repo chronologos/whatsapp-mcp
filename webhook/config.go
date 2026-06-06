@@ -14,6 +14,7 @@ type Config struct {
 	DeliveryTimeout   time.Duration   // HTTP request timeout
 	WorkerPoolSize    int             // Number of concurrent delivery workers
 	ChannelBufferSize int             // Size of delivery queue buffer
+	AllowedChatJIDs   map[string]bool // From ALLOWED_CHAT_JIDS env var (empty = all chats)
 }
 
 // LoadConfig loads webhook configuration from environment variables.
@@ -26,6 +27,11 @@ func LoadConfig() *Config {
 		maxRetries = len(retryBackoff)
 	}
 
+	allowedChats := make(map[string]bool)
+	for _, jid := range config.GetEnvStringSlice("ALLOWED_CHAT_JIDS") {
+		allowedChats[jid] = true
+	}
+
 	return &Config{
 		PrimaryURL:        os.Getenv("WEBHOOK_URL"),
 		MaxRetries:        maxRetries,
@@ -33,5 +39,6 @@ func LoadConfig() *Config {
 		DeliveryTimeout:   time.Duration(config.GetEnvInt("WEBHOOK_TIMEOUT_SECONDS", 10)) * time.Second,
 		WorkerPoolSize:    config.GetEnvInt("WEBHOOK_WORKER_POOL_SIZE", 3),
 		ChannelBufferSize: 100,
+		AllowedChatJIDs:   allowedChats,
 	}
 }

@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -322,11 +323,13 @@ func (s *MessageStore) scanMessages(rows *sql.Rows) ([]Message, error) {
 
 // SearchMessagesWithNamesFiltered searches messages with pattern matching and sender filtering.
 // It uses GLOB patterns if useGlob is true, otherwise uses LIKE for fuzzy matching.
+// If allowedChats is non-empty, results are restricted to those chat JIDs.
 func (s *MessageStore) SearchMessagesWithNamesFiltered(
 	query string,
 	useGlob bool,
 	senderJID string,
 	limit int,
+	allowedChats []string,
 ) ([]MessageWithNames, error) {
 	var sqlQuery string
 	var args []any
@@ -360,6 +363,14 @@ func (s *MessageStore) SearchMessagesWithNamesFiltered(
 	if senderJID != "" {
 		sqlQuery += " AND sender_jid = ?"
 		args = append(args, senderJID)
+	}
+
+	// restrict to allowed chats if configured
+	if len(allowedChats) > 0 {
+		sqlQuery += " AND chat_jid IN (?" + strings.Repeat(",?", len(allowedChats)-1) + ")"
+		for _, jid := range allowedChats {
+			args = append(args, jid)
+		}
 	}
 
 	sqlQuery += " ORDER BY timestamp DESC LIMIT ?"

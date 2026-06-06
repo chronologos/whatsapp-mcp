@@ -34,6 +34,7 @@ import (
 	"syscall"
 	"time"
 
+	"whatsapp-mcp/config"
 	"whatsapp-mcp/mcp"
 	"whatsapp-mcp/paths"
 	"whatsapp-mcp/storage"
@@ -157,8 +158,10 @@ func main() {
 			if evt.Event == "code" {
 				fmt.Println("\nScan the QR code below:")
 				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
-				fmt.Println("\nQR Code also saved to qr.png")
-				qrcode.WriteFile(evt.Code, qrcode.Low, 256, paths.QRCodePath)
+				fmt.Printf("\nQR code also saved to %s\n", paths.QRCodePath)
+				if err := qrcode.WriteFile(evt.Code, qrcode.Low, 256, paths.QRCodePath); err != nil {
+					log.Printf("Warning: failed to write QR code image: %v", err)
+				}
 			} else {
 				log.Println("QR event:", evt.Event)
 			}
@@ -172,8 +175,16 @@ func main() {
 		log.Println("Connected to WhatsApp")
 	}
 
+	// chat scope: restrict tools, resources, and webhooks to specific chats
+	allowedChatJIDs := config.GetEnvStringSlice("ALLOWED_CHAT_JIDS")
+	if len(allowedChatJIDs) > 0 {
+		log.Printf("Chat scope enabled: restricted to %d chat(s): %v", len(allowedChatJIDs), allowedChatJIDs)
+	} else {
+		log.Println("Warning: ALLOWED_CHAT_JIDS not set, all chats are accessible")
+	}
+
 	// initialize MCP server
-	mcpServer := mcp.NewMCPServer(waClient, store, mediaStore, timezone)
+	mcpServer := mcp.NewMCPServer(waClient, store, mediaStore, timezone, allowedChatJIDs)
 	log.Println("MCP server initialized")
 
 	mux := http.NewServeMux()

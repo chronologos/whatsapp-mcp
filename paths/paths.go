@@ -24,7 +24,7 @@ const (
 	MessagesDBPath     = DataDBDir + "/messages.db"
 	WhatsAppAuthDBPath = DataDBDir + "/whatsapp_auth.db"
 	WhatsAppLogPath    = DataDir + "/whatsapp.log"
-	QRCodePath         = "./qr.png"
+	QRCodePath         = DataDir + "/qr.png"
 )
 
 // EnsureDataDirectories ensures that all required data directories exist.

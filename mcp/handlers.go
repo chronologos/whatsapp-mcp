@@ -68,6 +68,18 @@ func (m *MCPServer) parseTimestamp(timestampStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("invalid timestamp format: %s (expected ISO 8601 like '2006-01-02T15:04:05' or '2006-01-02')", timestampStr)
 }
 
+// clampInt constrains a value to the [low, high] range.
+// SQLite treats negative LIMIT/OFFSET as "unbounded", so values must never go below zero.
+func clampInt(v, low, high int) int {
+	if v < low {
+		return low
+	}
+	if v > high {
+		return high
+	}
+	return v
+}
+
 // detectPatternType determines whether a search query should use GLOB matching.
 // It returns true if the query contains glob wildcards: * ? [
 func detectPatternType(query string) bool {
@@ -112,15 +124,23 @@ func formatDuration(seconds *int) string {
 // handleListChats handles the list_chats tool request.
 func (m *MCPServer) handleListChats(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// get limit parameter with default
-	limit := request.GetFloat("limit", 50.0)
-	if limit > 100 {
-		limit = 100
-	}
+	limit := clampInt(int(request.GetFloat("limit", 50.0)), 1, 100)
 
 	// query database
-	chats, err := m.store.ListChats(int(limit))
+	chats, err := m.store.ListChats(limit)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to list chats: %v", err)), nil
+	}
+
+	// filter to allowed chats if scoped
+	if len(m.allowedSet) > 0 {
+		filtered := chats[:0]
+		for _, chat := range chats {
+			if m.allowedSet[chat.JID] {
+				filtered = append(filtered, chat)
+			}
+		}
+		chats = filtered
 	}
 
 	// format response
@@ -158,11 +178,13 @@ func (m *MCPServer) handleGetChatMessages(ctx context.Context, request mcp.CallT
 		return mcp.NewToolResultError("chat_jid parameter is required"), nil
 	}
 
-	// get optional limit
-	limit := request.GetFloat("limit", 50.0)
-	if limit > 200 {
-		limit = 200
+	// enforce chat scope
+	if !m.isChatAllowed(chatJID) {
+		return mcp.NewToolResultError(chatScopeError(chatJID)), nil
 	}
+
+	// get optional limit
+	limit := clampInt(int(request.GetFloat("limit", 50.0)), 1, 200)
 
 	// get optional timestamp filters
 	var beforeTime *time.Time
@@ -196,15 +218,15 @@ func (m *MCPServer) handleGetChatMessages(ctx context.Context, request mcp.CallT
 		// use new filtered method
 		messages, err = m.store.GetChatMessagesWithNamesFiltered(
 			chatJID,
-			int(limit),
+			limit,
 			beforeTime,
 			afterTime,
 			senderJID,
 		)
 	} else {
 		// backward compatibility: use offset if no timestamp filters
-		offset := request.GetFloat("offset", 0.0)
-		messages, err = m.store.GetChatMessagesWithNames(chatJID, int(limit), int(offset))
+		offset := clampInt(int(request.GetFloat("offset", 0.0)), 0, 1<<30)
+		messages, err = m.store.GetChatMessagesWithNames(chatJID, limit, offset)
 	}
 
 	if err != nil {
@@ -283,10 +305,7 @@ func (m *MCPServer) handleSearchMessages(ctx context.Context, request mcp.CallTo
 	query := request.GetString("query", "")
 
 	// get optional limit
-	limit := request.GetFloat("limit", 50.0)
-	if limit > 200 {
-		limit = 200
-	}
+	limit := clampInt(int(request.GetFloat("limit", 50.0)), 1, 200)
 
 	// get optional sender filter
 	senderJID := request.GetString("from", "")
@@ -299,8 +318,8 @@ func (m *MCPServer) handleSearchMessages(ctx context.Context, request mcp.CallTo
 	// detect pattern type
 	useGlob := detectPatternType(query)
 
-	// search database
-	messages, err := m.store.SearchMessagesWithNamesFiltered(query, useGlob, senderJID, int(limit))
+	// search database (restricted to allowed chats if scoped)
+	messages, err := m.store.SearchMessagesWithNamesFiltered(query, useGlob, senderJID, limit, m.allowedChats)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("search failed: %v", err)), nil
 	}
@@ -384,6 +403,17 @@ func (m *MCPServer) handleFindChat(ctx context.Context, request mcp.CallToolRequ
 		return mcp.NewToolResultError(fmt.Sprintf("failed to search chats: %v", err)), nil
 	}
 
+	// filter to allowed chats if scoped
+	if len(m.allowedSet) > 0 {
+		filtered := chats[:0]
+		for _, chat := range chats {
+			if m.allowedSet[chat.JID] {
+				filtered = append(filtered, chat)
+			}
+		}
+		chats = filtered
+	}
+
 	// format response
 	var result strings.Builder
 	fmt.Fprintf(&result, "Found %d matching chats", len(chats))
@@ -423,6 +453,11 @@ func (m *MCPServer) handleSendMessage(ctx context.Context, request mcp.CallToolR
 		return mcp.NewToolResultError("text parameter is required"), nil
 	}
 
+	// enforce chat scope
+	if !m.isChatAllowed(chatJID) {
+		return mcp.NewToolResultError(chatScopeError(chatJID)), nil
+	}
+
 	// check WhatsApp connection
 	if !m.wa.IsLoggedIn() {
 		return mcp.NewToolResultError("WhatsApp is not connected"), nil
@@ -443,6 +478,11 @@ func (m *MCPServer) handleLoadMoreMessages(ctx context.Context, request mcp.Call
 	chatJID, err := request.RequireString("chat_jid")
 	if err != nil {
 		return mcp.NewToolResultError("chat_jid parameter is required"), nil
+	}
+
+	// enforce chat scope
+	if !m.isChatAllowed(chatJID) {
+		return mcp.NewToolResultError(chatScopeError(chatJID)), nil
 	}
 
 	// get optional count (default 50, max 200)
