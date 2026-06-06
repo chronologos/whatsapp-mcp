@@ -90,6 +90,7 @@ async function mcpSend(chatJid, text) {
 }
 
 // Drive one Pi RPC turn: send a prompt, wait until the agent finishes.
+// Resolves with { sent, tools }: whether send_message ran, and all tools used.
 function runPi(promptText) {
   return new Promise((resolve) => {
     const child = spawn("pi", ["--mode", "rpc", "--provider", PROVIDER, "--model", MODEL, "--no-session"], {
@@ -98,6 +99,7 @@ function runPi(promptText) {
     });
     let buf = "";
     let done = false;
+    const tools = [];
     const finish = () => {
       if (done) return;
       done = true;
@@ -106,7 +108,7 @@ function runPi(promptText) {
       } catch {
         /* already gone */
       }
-      resolve();
+      resolve({ sent: tools.includes("send_message"), tools });
     };
     child.stdout.on("data", (d) => {
       buf += d.toString();
@@ -121,6 +123,7 @@ function runPi(promptText) {
         } catch {
           continue;
         }
+        if (evt.type === "tool_execution_end" && evt.toolName) tools.push(evt.toolName);
         if (evt.type === "agent_end") finish();
       }
     });
@@ -197,7 +200,11 @@ async function handle(data) {
       `--- END ---\n\n` +
       guidance;
     console.error(`[bot] handling (${mode}) in ${chat} from ${data.sender_jid}`);
-    await runPi(framed);
+    const { sent, tools } = await runPi(framed);
+    console.error(
+      `[bot] turn done (${mode}) in ${chat}: ${sent ? "replied" : "stayed silent"}` +
+        (tools.length ? ` [tools: ${tools.join(", ")}]` : " [no tools]")
+    );
   } finally {
     busy = false;
   }
