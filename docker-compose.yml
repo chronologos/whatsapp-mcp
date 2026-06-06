@@ -12,6 +12,8 @@ services:
       # Restrict ALL tools, media, and webhooks to these chats (comma-separated JIDs).
       # Leave empty on first run to discover your group's JID, then set it. See README.
       - ALLOWED_CHAT_JIDS=${ALLOWED_CHAT_JIDS:-}
+      # Push message events to the bot agent over the internal Docker network.
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://agent:9000/webhook}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - TIMEZONE=${TIMEZONE:-UTC}
       - MEDIA_AUTO_DOWNLOAD_ENABLED=${MEDIA_AUTO_DOWNLOAD_ENABLED:-true}
@@ -44,3 +46,35 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Pi-powered bot agent (Gemini). Drives the WhatsApp MCP tools only.
+  # NOTE: deliberately has NO data volume — it cannot read the WhatsApp session
+  # DB. Its only WhatsApp capability is the scoped MCP tools over the network.
+  agent:
+    build:
+      context: ./agent
+    container_name: whatsapp-agent
+    depends_on:
+      - whatsapp-mcp
+    environment:
+      - WHATSAPP_MCP_URL=http://whatsapp-mcp:8080
+      - MCP_API_KEY=${MCP_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - AGENT_PROVIDER=${AGENT_PROVIDER:-google}
+      - AGENT_MODEL=${AGENT_MODEL:-gemini-2.0-flash}
+      # Cost + safety gate: only respond to messages starting with this prefix.
+      # Set to "" to respond to all messages (not recommended).
+      - TRIGGER_PREFIX=${TRIGGER_PREFIX:-@bot}
+      - AGENT_PORT=9000
+    restart: unless-stopped
+
+    # --- Sandbox hardening ---
+    # (read_only is omitted: Pi writes its own config/cache under $HOME. The key
+    #  isolation property — no access to the WhatsApp session DB — is preserved
+    #  by simply not mounting the data volume.)
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 1g

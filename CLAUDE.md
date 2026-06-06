@@ -124,6 +124,23 @@ multi-line message bodies — avoids shell escaping.)
   a Safe Family-Group Bot"). The stronger design isolates the agent from the
   data volume in a second container.
 
+## Bot agent (`agent/`)
+
+Optional autonomous bot: **Pi** (coding-agent harness) running **Gemini**, in a
+second container, restricted to the WhatsApp MCP tools. See `agent/README.md`.
+- `agent/extensions/whatsapp-mcp.ts` — Pi extension: MCP handshake →
+  `tools/list` → `registerTool` per tool (proxies `tools/call`) → disables
+  built-in tools via `setActiveTools` (deferred to `session_start` /
+  `before_agent_start` — it cannot run during extension loading).
+- `agent/bot.mjs` — webhook listener → drives a Pi RPC turn per triggering
+  message (gated by `TRIGGER_PREFIX`, default `@bot`). Pi replies via the
+  `send_message` tool; the supervisor never sends directly.
+- **Key isolation:** the `agent` service mounts **no data volume**, so it can't
+  read the session DB; its only WhatsApp capability is the scoped MCP tools.
+- Config: `GEMINI_API_KEY`, `AGENT_MODEL`, `TRIGGER_PREFIX`, `WHATSAPP_MCP_URL`
+  (all in `.env` / compose). The MCP server pushes events via `WEBHOOK_URL`
+  pointed at `http://agent:9000/webhook`.
+
 ## Conventions
 
 - Match surrounding Go style; lower-case comment style as in existing files.
