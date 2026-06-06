@@ -46,6 +46,17 @@ An autonomous bot that replies in your scoped WhatsApp chats, powered by
 
 Logs: `docker compose logs -f agent`
 
+## Custom models (`models.json`)
+
+Pi ships a bundled model registry; newer models (e.g. `gemini-3.5-flash`) are
+added via `agent/models.json`, baked into the image at
+`~/.pi/agent/models.json`. To add another model, append an entry under
+`providers.google.models` (id, name, input, contextWindow, maxTokens,
+reasoning) and rebuild. Then set `AGENT_MODEL` to its id.
+
+Note: an unknown `AGENT_MODEL` makes Pi start a turn but silently produce no
+output (no error) — if the bot goes quiet, check the model id is valid/registered.
+
 ## Notes & limitations
 
 - **Provider trust:** message text for triggered messages is sent to the Gemini

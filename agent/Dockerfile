@@ -20,6 +20,9 @@ WORKDIR /home/agent/app
 RUN mkdir -p /home/agent/.pi/agent/extensions
 COPY --chown=agent:agent extensions/whatsapp-mcp.ts /home/agent/.pi/agent/extensions/whatsapp-mcp.ts
 
+# Custom model registry (adds models not in Pi's bundled list, e.g. gemini-3.5-flash).
+COPY --chown=agent:agent models.json /home/agent/.pi/agent/models.json
+
 # Supervisor + system prompt.
 COPY --chown=agent:agent bot.mjs system-prompt.md ./
 
