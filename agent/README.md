@@ -46,6 +46,26 @@ An autonomous bot that replies in your scoped WhatsApp chats, powered by
 
 Logs: `docker compose logs -f agent`
 
+### Triggering
+
+- **Command:** any message starting with `@bot` (the prefix) gets a reply —
+  works for the owner too (the bot never prefixes its own replies, so it can't
+  trigger itself).
+- **Persist mode:** the owner sends `@bot-persist-<duration>` (e.g.
+  `@bot-persist-30m`, `@bot-persist-2h`, `@bot-persist-1h30m`). For that window
+  the bot sees every new message *from others* in that chat and decides on its
+  own whether to chime in — no prefix needed. `@bot-stop` ends it early.
+  Capped by `PERSIST_MAX` (default 6h). **Cost note:** in persist mode every
+  message from others spawns a Gemini turn (even when it stays silent).
+
+### Memory
+
+The bot is **stateless per message** (`pi --no-session`, fresh process each
+turn) — no long-term memory. It can pull recent context on demand via the
+`get_chat_messages` tool, and the persist/command prompts nudge it to do so,
+but it does not remember anything across turns. Persistent memory would require
+adding a store (not implemented).
+
 ## Custom models (`models.json`)
 
 Pi ships a bundled model registry; newer models (e.g. `gemini-3.5-flash`) are
